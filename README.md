@@ -30,27 +30,29 @@ Fortolkning:
 
 Der skal bruges en TIO modul i NOX, som skal sættes op med de korrekte parameter for at dette script kan tyde signaler korrekt.
 
-1 - Opsæt din TIO.
-2 - vælg NOX is Telnet Server
-3 - vælg dit netværk interface
-4 - vælg "with delimeter"
-5 - setup tekst format for status
-vælg send inputs opsæt den til at sende INP#I|@I|$I|%I
-    vælg send outputs opsæt den til at sende OUT#O|$O|%O
-vælg send area states opsæt den til at sende AREA#A|$A|%A|$T
+1. Opsæt din TIO.
+2. vælg NOX is Telnet Server
+3. vælg dit netværk interface
+4. vælg "with delimeter"
+5. vælg send all states every 5 minutes
+6. setup tekst format for status
+   - vælg send inputs opsæt den til at sende INP#I|@I|$I|%I[CR][LF]
+   - vælg send outputs opsæt den til at sende OUT#O|$O|%O[CR][LF] vælge on+off
+   - vælg send area states opsæt den til at sende AREA#A|$A|%A|$T[CR][LF]
 
 ref:
-#A - Area number
-$A - Area Name
-%A - Area state name
-$T - Alarm Type
-#O - Output number
-$O - Output Name
-%O - Output state name
-#I - Input number (unik)
-@I - ID number (modul+input nummer)
-$I - Input name
-%I Input state name
+
+- #A - Area number
+- $A - Area Name
+- %A - Area state name
+- $T - Alarm Type
+- #O - Output number
+- $O - Output Name
+- %O - Output state name
+- #I - Input number (unik)
+- @I - ID number (modul+input nummer)
+- $I - Input name
+- %I Input state name
 
 ## Installation
 
