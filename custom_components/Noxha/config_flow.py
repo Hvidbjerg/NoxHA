@@ -1,5 +1,6 @@
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.const import CONF_HOST, CONF_PORT
 from .const import DOMAIN
 
 
@@ -15,8 +16,8 @@ class NoxConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Felter som brugeren skal udfylde i HA
         data_schema = vol.Schema({
-            vol.Required("host"): str,
-            vol.Required("port", default=23): int,
+            vol.Required(CONF_HOST): str,
+            vol.Required(CONF_PORT, default=23): int,
         })
 
         return self.async_show_form(
