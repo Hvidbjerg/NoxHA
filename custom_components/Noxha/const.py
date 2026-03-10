@@ -1,8 +1,12 @@
-"""Constants for integration_blueprint."""
+DOMAIN = "noxha"
+PREFIX_INPUT = "INP"
+PREFIX_OUTPUT = "OUT"
+PREFIX_AREA = "AREA"
 
-from logging import Logger, getLogger
-
-LOGGER: Logger = getLogger(__package__)
-
-DOMAIN = "integration_blueprint"
-ATTRIBUTION = "Data provided by http://jsonplaceholder.typicode.com/"
+# Mapping af Alarm Typer ($T)
+ALARM_TYPES = {
+    "0": "Ingen",
+    "1": "Indbrud",
+    "2": "Brand",
+    "3": "Overfald"
+}
