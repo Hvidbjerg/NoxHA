@@ -58,8 +58,8 @@ ref:
 
 ## Via HACS (anbefalet)
 
-1. Aabn HACS i Home Assistant.
-2. Vaelg Integrations.
+1. Åbn HACS i Home Assistant.
+2. Vælg Integrations.
 3. Tilfoej dit repository som custom repository (type: Integration), hvis det ikke allerede er tilfoejet.
 4. Installer NoxHA.
 5. Genstart Home Assistant.
@@ -115,4 +115,4 @@ Hvis der ikke oprettes entiteter:
 
 ## Status
 
-Projektet er i tidlig version (`0.1.0`) og kan udbygges med flere NOX felter, validering i config flow og bedre diagnostik.
+Projektet er i tidlig version (`1.0.0`) og kan udbygges med flere NOX felter, validering i config flow og bedre diagnostik.
