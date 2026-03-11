@@ -1,8 +1,9 @@
 import asyncio
 import logging
+import re
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_PORT, Platform
+from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
@@ -16,8 +17,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     host = entry.data[CONF_HOST]
     port = entry.data[CONF_PORT]
 
-    _LOGGER.error("!!! async_setup_entry STARTER NU !!!")
-
     # Opret klient-instansen
     client = NoxTcpClient(hass, host, port, entry)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = client
@@ -29,7 +28,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Registrer platforme (binary_sensor, sensor, etc.)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    _LOGGER.error("!!! SETUP ER FÆRDIG - AFVENTER DATA FRA KLIENT !!!")
     return True
 
 
@@ -49,43 +47,53 @@ class NoxTcpClient:
         self.host = host
         self.port = port
         self.entry = entry
+        self._line_breaker = re.compile(r"[\r\n]+")
+        self._read_buffer = ""
         self._known_uids = set()
+        self._input_states: dict[str, bool] = {}
+        self._output_states: dict[str, str] = {}
+        self._area_states: dict[str, tuple[str, str]] = {}
 
     async def async_run(self):
         """Hovedloop for TCP-forbindelsen."""
-        _LOGGER.error("!!! NoxTcpClient.async_run LOOP STARTER !!!")
-
         while True:
             try:
-                _LOGGER.error(
-                    f"PRØVER AT FORBINDE TIL NOX: {self.host}:{self.port}")
-                reader, writer = await asyncio.open_connection(self.host, self.port)
-                _LOGGER.error(
-                    "+++ SUCCES: FORBUNDET TIL NOX TELNET SERVER +++")
+                _LOGGER.info("Forbinder til NOX %s:%s", self.host, self.port)
+                reader, _writer = await asyncio.open_connection(self.host, self.port)
+                _LOGGER.info("Forbundet til NOX")
+                self._read_buffer = ""
 
                 while True:
-                    line_bytes = await reader.readline()
-                    if not line_bytes:
-                        _LOGGER.error(
-                            "--- ADVARSEL: FORBINDELSE LUKKET AF NOX (EOF) ---")
+                    chunk = await reader.read(4096)
+                    if not chunk:
+                        _LOGGER.warning("Forbindelse lukket af NOX (EOF)")
                         break
 
-                    message = line_bytes.decode(
-                        'utf-8', errors='ignore').strip()
-                    if message:
-                        # VI BRUGER ERROR HER FOR AT SE ALT RÅ DATA I LOGGEN
-                        _LOGGER.error(f"MODTAGET FRA NOX: >>> {message} <<<")
-                        self._handle_nox_message(message)
+                    self._read_buffer += chunk.decode("utf-8", errors="ignore")
+                    self._drain_messages()
 
             except Exception as err:
-                _LOGGER.error(f"!!! FEJL I NOX-FORBINDELSE: {err} !!!")
+                _LOGGER.error("Fejl i NOX-forbindelse: %s", err)
 
-            _LOGGER.error("Venter 10 sekunder før næste forbindelsesforsøg...")
+            _LOGGER.info("Venter 10 sekunder før reconnect")
             await asyncio.sleep(10)
+
+    def _drain_messages(self) -> None:
+        """Split stream-buffer på både CR og LF og parse komplette beskeder."""
+        parts = self._line_breaker.split(self._read_buffer)
+        if not self._read_buffer.endswith("\n") and not self._read_buffer.endswith("\r"):
+            self._read_buffer = parts.pop() if parts else self._read_buffer
+        else:
+            self._read_buffer = ""
+
+        for raw in parts:
+            message = raw.strip()
+            if message:
+                _LOGGER.debug("NOX raw: %s", message)
+                self._handle_nox_message(message)
 
     def _handle_nox_message(self, message: str):
         """Parser TIO matrixen og sender signaler internt i HA."""
-        # Vi lader denne være debug, da vi allerede logger 'message' ovenfor med ERROR
         _LOGGER.debug("Parser besked: %s", message)
 
         try:
@@ -97,13 +105,16 @@ class NoxTcpClient:
 
             # --- INPUT HÅNDTERING ---
             if header.startswith(PREFIX_INPUT):
+                if len(parts) < 4:
+                    return
+
                 index = header.replace(PREFIX_INPUT, "")
                 uid = parts[1]
                 name = parts[2]
                 state = parts[3]
 
                 if uid not in self._known_uids:
-                    _LOGGER.error(f"OPDAGER NY SENSOR: {name} ({uid})")
+                    _LOGGER.info("Opdaget nyt input: %s (%s)", name, uid)
                     async_dispatcher_send(
                         self.hass,
                         f"{DOMAIN}_new_binary_sensor",
@@ -113,11 +124,62 @@ class NoxTcpClient:
 
                 is_on = state.lower() not in [
                     "closed", "lukket", "ok", "off", "hvil"]
-                async_dispatcher_send(
-                    self.hass, f"{DOMAIN}_update_{uid}", is_on)
+                if self._input_states.get(uid) != is_on:
+                    self._input_states[uid] = is_on
+                    async_dispatcher_send(
+                        self.hass, f"{DOMAIN}_update_{uid}", is_on)
 
-            # (Resten af din output/area logik er fin...)
+            # --- OUTPUT HÅNDTERING ---
+            elif header.startswith(PREFIX_OUTPUT):
+                if len(parts) < 3:
+                    return
+
+                index = header.replace(PREFIX_OUTPUT, "")
+                name = parts[1]
+                state = parts[2].strip().lower()
+                uid = f"out_{index}"
+
+                if uid not in self._known_uids:
+                    async_dispatcher_send(
+                        self.hass,
+                        f"{DOMAIN}_new_output_sensor",
+                        {"index": index, "name": name},
+                    )
+                    self._known_uids.add(uid)
+
+                if self._output_states.get(index) != state:
+                    self._output_states[index] = state
+                    async_dispatcher_send(
+                        self.hass, f"{DOMAIN}_output_update_{index}", state
+                    )
+
+            # --- AREA HÅNDTERING ---
+            elif header.startswith(PREFIX_AREA):
+                if len(parts) < 3:
+                    return
+
+                index = header.replace(PREFIX_AREA, "")
+                name = parts[1]
+                state = parts[2].strip()
+                alarm_type = parts[3].strip() if len(parts) > 3 else "0"
+
+                uid = f"area_{index}"
+                if uid not in self._known_uids:
+                    async_dispatcher_send(
+                        self.hass,
+                        f"{DOMAIN}_new_area",
+                        {"index": index, "name": name},
+                    )
+                    self._known_uids.add(uid)
+
+                area_payload = (state, alarm_type)
+                if self._area_states.get(index) != area_payload:
+                    self._area_states[index] = area_payload
+                    async_dispatcher_send(
+                        self.hass,
+                        f"{DOMAIN}_area_update_{index}",
+                        {"state": state, "alarm_type": alarm_type},
+                    )
 
         except Exception as e:
-            _LOGGER.error(
-                f"!!! KUNNE IKKE PARSE BESKED: {message} | FEJL: {e} !!!")
+            _LOGGER.error("Kunne ikke parse besked '%s': %s", message, e)

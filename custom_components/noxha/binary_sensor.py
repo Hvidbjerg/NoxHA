@@ -14,15 +14,13 @@ async def async_setup_entry(hass, entry, async_add_entities):
     """Sæt binary_sensor platformen op via discovery."""
     known_devices = set()
 
-    _LOGGER.error("!!! NOX BINARY_SENSOR PLATFORM ER AKTIV !!!")
-
     def async_discover_input(data):
         """Håndterer nye inputs fra NOX."""
         uid = data["uid"]
         if uid not in known_devices:
             _LOGGER.info("Opdaget NOX Input: %s (%s)", data["name"], uid)
             new_sensor = NoxInputSensor(hass, uid, data["name"], data["index"])
-            hass.add_job(async_add_entities, [new_sensor])
+            async_add_entities([new_sensor])
             known_devices.add(uid)
 
     def async_discover_output(data):
@@ -32,14 +30,18 @@ async def async_setup_entry(hass, entry, async_add_entities):
         if uid not in known_devices:
             _LOGGER.info("Opdaget NOX Output: %s", data["name"])
             new_sensor = NoxOutputSensor(hass, index, data["name"])
-            hass.add_job(async_add_entities, [new_sensor])
+            async_add_entities([new_sensor])
             known_devices.add(uid)
 
     # Forbind til dispatcher
-    async_dispatcher_connect(
-        hass, f"{DOMAIN}_new_binary_sensor", async_discover_input)
-    async_dispatcher_connect(
-        hass, f"{DOMAIN}_new_output_sensor", async_discover_output)
+    entry.async_on_unload(
+        async_dispatcher_connect(
+            hass, f"{DOMAIN}_new_binary_sensor", async_discover_input)
+    )
+    entry.async_on_unload(
+        async_dispatcher_connect(
+            hass, f"{DOMAIN}_new_output_sensor", async_discover_output)
+    )
 
 
 class NoxBaseEntity(BinarySensorEntity):
@@ -80,9 +82,10 @@ class NoxInputSensor(NoxBaseEntity):
     async def async_added_to_hass(self):
         """Forbind til statusopdateringer når sensoren lander i HA."""
         def update_state(is_on):
+            if self._attr_is_on == is_on:
+                return
+
             self._attr_is_on = is_on
-            # RETTELSE: Vi bruger schedule_update i stedet for write_ha_state
-            # Det gør det sikkert at opdatere fra TCP-tråden
             self.async_schedule_update_ha_state()
 
         self.async_on_remove(
@@ -105,9 +108,12 @@ class NoxOutputSensor(NoxBaseEntity):
     async def async_added_to_hass(self):
         """Forbind til statusopdateringer."""
         def update_state(state_text):
-            self._attr_is_on = str(state_text).lower() in [
+            is_on = str(state_text).lower() in [
                 "on", "1", "active", "aktiv", "open"]
-            # RETTELSE: Samme her for outputs
+            if self._attr_is_on == is_on:
+                return
+
+            self._attr_is_on = is_on
             self.async_schedule_update_ha_state()
 
         self.async_on_remove(

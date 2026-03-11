@@ -19,7 +19,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     # Lyt efter 'new_area' signalet fra din __init__.py
     # Husk at tilføje dette signal i din __init__.py handle_message logik!
-    async_dispatcher_connect(hass, f"{DOMAIN}_new_area", async_discover_area)
+    entry.async_on_unload(
+        async_dispatcher_connect(
+            hass, f"{DOMAIN}_new_area", async_discover_area)
+    )
 
 
 class NoxAreaSensor(SensorEntity):
@@ -48,11 +51,17 @@ class NoxAreaSensor(SensorEntity):
         """Når sensoren er tilføjet, lyt efter AREA-opdateringer."""
         def update_area(data):
             # data indeholder {"state": %A, "alarm_type": $T}
-            self._attr_native_value = data["state"]
-            self._alarm_type = data["alarm_type"]
+            new_state = data["state"]
+            new_alarm_type = data["alarm_type"]
+
+            if self._attr_native_value == new_state and self._alarm_type == new_alarm_type:
+                return
+
+            self._attr_native_value = new_state
+            self._alarm_type = new_alarm_type
 
             # Skift ikon baseret på tilstand (valgfrit)
-            if "tilkoblet" in data["state"].lower():
+            if "tilkoblet" in new_state.lower():
                 self._attr_icon = "mdi:shield-lock"
             else:
                 self._attr_icon = "mdi:shield-off"
