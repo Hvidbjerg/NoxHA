@@ -1,6 +1,8 @@
 import asyncio
+from collections import deque
 import logging
 import re
+import time
 from typing import Optional
 
 from homeassistant.config_entries import ConfigEntry
@@ -8,7 +10,18 @@ from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
-from .const import DOMAIN, PLATFORMS, PREFIX_INPUT, PREFIX_OUTPUT, PREFIX_AREA
+from .const import (
+    BULK_COOLDOWN_SECONDS,
+    BULK_FLUSH_INTERVAL,
+    BULK_FLUSH_MAX_ITEMS,
+    BULK_MESSAGE_THRESHOLD,
+    BULK_WINDOW_SECONDS,
+    DOMAIN,
+    PLATFORMS,
+    PREFIX_AREA,
+    PREFIX_INPUT,
+    PREFIX_OUTPUT,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,10 +67,51 @@ class NoxTcpClient:
         self._input_states: dict[str, bool] = {}
         self._output_states: dict[str, bool] = {}
         self._area_states: dict[str, tuple[str, str]] = {}
+        self._recent_messages = deque()
+        self._bulk_mode_until = 0.0
+        self._queued_dispatches: dict[str, tuple[str, object]] = {}
+        self._bulk_flush_task: asyncio.Task | None = None
 
     def _dispatch(self, signal: str, payload) -> None:
         """Send dispatcher-signal på Home Assistant loopet."""
         self.hass.add_job(async_dispatcher_send, self.hass, signal, payload)
+
+    def _is_bulk_mode(self) -> bool:
+        """Afgør om vi er i burst/bulk mode baseret på beskedfrekvens."""
+        now = time.monotonic()
+        self._recent_messages.append(now)
+        cutoff = now - BULK_WINDOW_SECONDS
+        while self._recent_messages and self._recent_messages[0] < cutoff:
+            self._recent_messages.popleft()
+
+        if len(self._recent_messages) >= BULK_MESSAGE_THRESHOLD:
+            self._bulk_mode_until = now + BULK_COOLDOWN_SECONDS
+
+        return now < self._bulk_mode_until
+
+    def _schedule_dispatch(self, key: str, signal: str, payload, bulk_mode: bool) -> None:
+        """Send straks ved single events; coalesce + throttle under bulk mode."""
+        if not bulk_mode:
+            self._dispatch(signal, payload)
+            return
+
+        self._queued_dispatches[key] = (signal, payload)
+        if self._bulk_flush_task is None or self._bulk_flush_task.done():
+            self._bulk_flush_task = self.entry.async_create_background_task(
+                self.hass,
+                self._async_flush_queued_dispatches(),
+                "nox_bulk_dispatch_flush",
+            )
+
+    async def _async_flush_queued_dispatches(self) -> None:
+        """Flusher queued updates i små batches for at skåne HA under brute force."""
+        while self._queued_dispatches:
+            keys = list(self._queued_dispatches.keys())[:BULK_FLUSH_MAX_ITEMS]
+            for key in keys:
+                signal, payload = self._queued_dispatches.pop(key)
+                self._dispatch(signal, payload)
+
+            await asyncio.sleep(BULK_FLUSH_INTERVAL)
 
     @staticmethod
     def _normalize_binary_state(raw_state: str) -> Optional[bool]:
@@ -120,9 +174,9 @@ class NoxTcpClient:
             message = raw.strip()
             if message:
                 _LOGGER.debug("NOX raw: %s", message)
-                self._handle_nox_message(message)
+                self._handle_nox_message(message, self._is_bulk_mode())
 
-    def _handle_nox_message(self, message: str):
+    def _handle_nox_message(self, message: str, bulk_mode: bool):
         """Parser TIO matrixen og sender signaler internt i HA."""
         _LOGGER.debug("Parser besked: %s", message)
 
@@ -152,15 +206,22 @@ class NoxTcpClient:
                 if uid not in self._known_uids:
                     _LOGGER.info("Opdaget nyt input: %s (%s)", name, uid)
                     self._input_states[uid] = is_on
-                    self._dispatch(
+                    self._schedule_dispatch(
+                        f"new_input_{uid}",
                         f"{DOMAIN}_new_binary_sensor",
                         {"uid": uid, "name": name, "index": index, "is_on": is_on},
+                        bulk_mode,
                     )
                     self._known_uids.add(uid)
 
                 if self._input_states.get(uid) != is_on:
                     self._input_states[uid] = is_on
-                    self._dispatch(f"{DOMAIN}_update_{uid}", is_on)
+                    self._schedule_dispatch(
+                        f"input_state_{uid}",
+                        f"{DOMAIN}_update_{uid}",
+                        is_on,
+                        bulk_mode,
+                    )
 
             # --- OUTPUT HÅNDTERING ---
             elif header.startswith(PREFIX_OUTPUT):
@@ -180,15 +241,22 @@ class NoxTcpClient:
 
                 if uid not in self._known_uids:
                     self._output_states[index] = is_on
-                    self._dispatch(
+                    self._schedule_dispatch(
+                        f"new_output_{index}",
                         f"{DOMAIN}_new_output_sensor",
                         {"index": index, "name": name, "is_on": is_on},
+                        bulk_mode,
                     )
                     self._known_uids.add(uid)
 
                 if self._output_states.get(index) != is_on:
                     self._output_states[index] = is_on
-                    self._dispatch(f"{DOMAIN}_output_update_{index}", is_on)
+                    self._schedule_dispatch(
+                        f"output_state_{index}",
+                        f"{DOMAIN}_output_update_{index}",
+                        is_on,
+                        bulk_mode,
+                    )
 
             # --- AREA HÅNDTERING ---
             elif header.startswith(PREFIX_AREA):
@@ -202,18 +270,22 @@ class NoxTcpClient:
 
                 uid = f"area_{index}"
                 if uid not in self._known_uids:
-                    self._dispatch(
+                    self._schedule_dispatch(
+                        f"new_area_{index}",
                         f"{DOMAIN}_new_area",
                         {"index": index, "name": name},
+                        bulk_mode,
                     )
                     self._known_uids.add(uid)
 
                 area_payload = (state, alarm_type)
                 if self._area_states.get(index) != area_payload:
                     self._area_states[index] = area_payload
-                    self._dispatch(
+                    self._schedule_dispatch(
+                        f"area_state_{index}",
                         f"{DOMAIN}_area_update_{index}",
                         {"state": state, "alarm_type": alarm_type},
+                        bulk_mode,
                     )
 
         except Exception as e:
