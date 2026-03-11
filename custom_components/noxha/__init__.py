@@ -188,19 +188,32 @@ class NoxTcpClient:
         processed = 0
         for message in input_messages:
             _LOGGER.debug("NOX raw: %s", message)
-            self._handle_nox_message(message, bulk_mode=False)
+            self._handle_nox_message(
+                message,
+                bulk_mode=False,
+                received_monotonic=time.monotonic(),
+            )
             processed += 1
             if processed % 100 == 0:
                 await asyncio.sleep(0)
 
         for message in other_messages:
             _LOGGER.debug("NOX raw: %s", message)
-            self._handle_nox_message(message, self._is_bulk_mode())
+            self._handle_nox_message(
+                message,
+                self._is_bulk_mode(),
+                received_monotonic=time.monotonic(),
+            )
             processed += 1
             if processed % 100 == 0:
                 await asyncio.sleep(0)
 
-    def _handle_nox_message(self, message: str, bulk_mode: bool):
+    def _handle_nox_message(
+        self,
+        message: str,
+        bulk_mode: bool,
+        received_monotonic: float,
+    ):
         """Parser TIO matrixen og sender signaler internt i HA."""
         _LOGGER.debug("Parser besked: %s", message)
 
@@ -234,11 +247,23 @@ class NoxTcpClient:
                         f"{DOMAIN}_new_binary_sensor",
                         {"uid": uid, "name": name, "index": index, "is_on": is_on},
                     )
+                    _LOGGER.debug(
+                        "NOX input discovery uid=%s state=%s dispatch_latency_ms=%.1f",
+                        uid,
+                        is_on,
+                        (time.monotonic() - received_monotonic) * 1000,
+                    )
                     self._known_uids.add(uid)
 
                 if self._input_states.get(uid) != is_on:
                     self._input_states[uid] = is_on
                     self._dispatch(f"{DOMAIN}_update_{uid}", is_on)
+                    _LOGGER.debug(
+                        "NOX input update uid=%s state=%s dispatch_latency_ms=%.1f",
+                        uid,
+                        is_on,
+                        (time.monotonic() - received_monotonic) * 1000,
+                    )
 
             # --- OUTPUT HÅNDTERING ---
             elif header.startswith(PREFIX_OUTPUT):
