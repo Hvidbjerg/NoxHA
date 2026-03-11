@@ -4,6 +4,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
     BinarySensorDeviceClass,
 )
+from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from .const import DOMAIN
 
@@ -14,6 +15,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     """Sæt binary_sensor platformen op via discovery."""
     known_devices = set()
 
+    @callback
     def async_discover_input(data):
         """Håndterer nye inputs fra NOX."""
         uid = data["uid"]
@@ -29,6 +31,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
             hass.add_job(async_add_entities, [new_sensor])
             known_devices.add(uid)
 
+    @callback
     def async_discover_output(data):
         """Håndterer nye outputs fra NOX."""
         index = data["index"]
@@ -92,12 +95,13 @@ class NoxInputSensor(NoxBaseEntity):
 
     async def async_added_to_hass(self):
         """Forbind til statusopdateringer når sensoren lander i HA."""
+        @callback
         def update_state(is_on):
             if self._attr_is_on == is_on:
                 return
 
             self._attr_is_on = is_on
-            self.async_schedule_update_ha_state()
+            self.schedule_update_ha_state()
 
         self.async_on_remove(
             async_dispatcher_connect(
@@ -118,12 +122,13 @@ class NoxOutputSensor(NoxBaseEntity):
 
     async def async_added_to_hass(self):
         """Forbind til statusopdateringer."""
+        @callback
         def update_state(is_on):
             if self._attr_is_on == is_on:
                 return
 
             self._attr_is_on = is_on
-            self.async_schedule_update_ha_state()
+            self.schedule_update_ha_state()
 
         self.async_on_remove(
             async_dispatcher_connect(

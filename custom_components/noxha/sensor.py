@@ -1,4 +1,5 @@
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from .const import DOMAIN, ALARM_TYPES
 
@@ -8,6 +9,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     known_areas = set()
 
+    @callback
     def async_discover_area(data):
         """Denne kaldes når en ny AREA pakke modtages fra __init__.py."""
         area_index = data["index"]
@@ -49,6 +51,7 @@ class NoxAreaSensor(SensorEntity):
 
     async def async_added_to_hass(self):
         """Når sensoren er tilføjet, lyt efter AREA-opdateringer."""
+        @callback
         def update_area(data):
             # data indeholder {"state": %A, "alarm_type": $T}
             new_state = data["state"]
@@ -66,7 +69,7 @@ class NoxAreaSensor(SensorEntity):
             else:
                 self._attr_icon = "mdi:shield-off"
 
-            self.async_schedule_update_ha_state()
+            self.schedule_update_ha_state()
 
         self.async_on_remove(
             async_dispatcher_connect(

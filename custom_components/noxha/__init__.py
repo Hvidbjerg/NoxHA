@@ -74,7 +74,9 @@ class NoxTcpClient:
 
     def _dispatch(self, signal: str, payload) -> None:
         """Send dispatcher-signal på Home Assistant loopet."""
-        self.hass.add_job(async_dispatcher_send, self.hass, signal, payload)
+        self.hass.loop.call_soon_threadsafe(
+            async_dispatcher_send, self.hass, signal, payload
+        )
 
     def _is_bulk_mode(self) -> bool:
         """Afgør om vi er i burst/bulk mode baseret på beskedfrekvens."""
