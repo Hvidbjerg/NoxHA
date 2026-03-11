@@ -4,6 +4,15 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from .const import DOMAIN, ALARM_TYPES
 
 
+def _normalize_name(name: str, fallback: str) -> str:
+    clean = (name or "").strip()
+    if not clean or clean in {"-", "?"}:
+        return fallback
+    if clean.isdigit():
+        return f"{fallback} {clean}"
+    return clean
+
+
 async def async_setup_entry(hass, entry, async_add_entities):
     """Sætter sensor platformen op."""
 
@@ -32,7 +41,7 @@ class NoxAreaSensor(SensorEntity):
 
     def __init__(self, index, name):
         self._index = index
-        self._attr_name = name
+        self._attr_name = _normalize_name(name, f"Area {index}")
         self._attr_unique_id = f"{DOMAIN}_area_{index}"
         self._attr_native_value = "Ukendt"
         self._alarm_type = "0"

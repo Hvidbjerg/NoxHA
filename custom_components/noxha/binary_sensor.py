@@ -11,6 +11,15 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 
+def _normalize_name(name: str, fallback: str) -> str:
+    clean = (name or "").strip()
+    if not clean or clean in {"-", "?"}:
+        return fallback
+    if clean.isdigit():
+        return f"{fallback} {clean}"
+    return clean
+
+
 async def async_setup_entry(hass, entry, async_add_entities):
     """Sæt binary_sensor platformen op via discovery."""
     known_devices = set()
@@ -78,7 +87,7 @@ class NoxInputSensor(NoxBaseEntity):
     def __init__(self, hass, uid, name, index, initial_state=False):
         self.hass = hass
         self._uid = uid
-        self._attr_name = name if name else f"Input {uid}"
+        self._attr_name = _normalize_name(name, f"Input {uid}")
         self._attr_unique_id = f"{DOMAIN}_inp_{uid}"
         self._index = index
         self._attr_is_on = initial_state
@@ -115,10 +124,14 @@ class NoxOutputSensor(NoxBaseEntity):
     def __init__(self, hass, index, name, initial_state=False):
         self.hass = hass
         self._index = index
-        self._attr_name = name if name else f"Output {index}"
+        self._attr_name = _normalize_name(name, f"Output {index}")
         self._attr_unique_id = f"{DOMAIN}_out_{index}"
         self._attr_is_on = initial_state
-        self._attr_icon = "mdi:relay"
+
+    @property
+    def icon(self):
+        """Brug et fast ikon for alle relæ outputs."""
+        return "mdi:electric-switch"
 
     async def async_added_to_hass(self):
         """Forbind til statusopdateringer."""

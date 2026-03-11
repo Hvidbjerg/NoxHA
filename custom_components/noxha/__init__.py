@@ -117,6 +117,16 @@ class NoxTcpClient:
             await asyncio.sleep(BULK_FLUSH_INTERVAL)
 
     @staticmethod
+    def _normalize_entity_name(raw_name: str, fallback: str) -> str:
+        """Rens navn fra NOX og brug fallback ved tomme/placeholder værdier."""
+        name = (raw_name or "").strip()
+        if not name or name in {"-", "?"}:
+            return fallback
+        if name.isdigit():
+            return f"{fallback} {name}"
+        return name
+
+    @staticmethod
     def _normalize_binary_state(raw_state: str) -> Optional[bool]:
         """Normaliser NOX state-tekst til bool, eller None ved ukendt værdi."""
         state = raw_state.strip().lower()
@@ -238,7 +248,7 @@ class NoxTcpClient:
 
                 index = header.replace(PREFIX_INPUT, "")
                 uid = parts[1]
-                name = parts[2]
+                name = self._normalize_entity_name(parts[2], f"Input {uid}")
                 normalized_state = self._normalize_binary_state(parts[3])
                 if normalized_state is None:
                     _LOGGER.debug(
@@ -278,7 +288,7 @@ class NoxTcpClient:
                     return
 
                 index = header.replace(PREFIX_OUTPUT, "")
-                name = parts[1]
+                name = self._normalize_entity_name(parts[1], f"Output {index}")
                 normalized_state = self._normalize_binary_state(parts[2])
                 if normalized_state is None:
                     _LOGGER.debug(
@@ -313,7 +323,7 @@ class NoxTcpClient:
                     return
 
                 index = header.replace(PREFIX_AREA, "")
-                name = parts[1]
+                name = self._normalize_entity_name(parts[1], f"Area {index}")
                 state = parts[2].strip()
                 alarm_type_raw = parts[3].strip() if len(parts) > 3 else "0"
                 alarm_type = "0" if alarm_type_raw in {
