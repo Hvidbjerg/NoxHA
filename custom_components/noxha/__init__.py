@@ -154,7 +154,7 @@ class NoxTcpClient:
                         break
 
                     self._read_buffer += chunk.decode("utf-8", errors="ignore")
-                    self._drain_messages()
+                    await self._drain_messages()
 
             except Exception as err:
                 _LOGGER.error("Fejl i NOX-forbindelse: %s", err)
@@ -162,7 +162,7 @@ class NoxTcpClient:
             _LOGGER.info("Venter 2 sekunder før reconnect")
             await asyncio.sleep(2)
 
-    def _drain_messages(self) -> None:
+    async def _drain_messages(self) -> None:
         """Split stream-buffer på både CR og LF og parse komplette beskeder."""
         parts = self._line_breaker.split(self._read_buffer)
         if not self._read_buffer.endswith("\n") and not self._read_buffer.endswith("\r"):
@@ -170,11 +170,32 @@ class NoxTcpClient:
         else:
             self._read_buffer = ""
 
+        input_messages: list[str] = []
+        other_messages: list[str] = []
+
         for raw in parts:
             message = raw.strip()
             if message:
-                _LOGGER.debug("NOX raw: %s", message)
-                self._handle_nox_message(message, self._is_bulk_mode())
+                if message.startswith(PREFIX_INPUT):
+                    input_messages.append(message)
+                else:
+                    other_messages.append(message)
+
+        # Input events har realtime-prioritet over bulk-opdateringer.
+        processed = 0
+        for message in input_messages:
+            _LOGGER.debug("NOX raw: %s", message)
+            self._handle_nox_message(message, bulk_mode=False)
+            processed += 1
+            if processed % 100 == 0:
+                await asyncio.sleep(0)
+
+        for message in other_messages:
+            _LOGGER.debug("NOX raw: %s", message)
+            self._handle_nox_message(message, self._is_bulk_mode())
+            processed += 1
+            if processed % 100 == 0:
+                await asyncio.sleep(0)
 
     def _handle_nox_message(self, message: str, bulk_mode: bool):
         """Parser TIO matrixen og sender signaler internt i HA."""
@@ -206,22 +227,15 @@ class NoxTcpClient:
                 if uid not in self._known_uids:
                     _LOGGER.info("Opdaget nyt input: %s (%s)", name, uid)
                     self._input_states[uid] = is_on
-                    self._schedule_dispatch(
-                        f"new_input_{uid}",
+                    self._dispatch(
                         f"{DOMAIN}_new_binary_sensor",
                         {"uid": uid, "name": name, "index": index, "is_on": is_on},
-                        bulk_mode,
                     )
                     self._known_uids.add(uid)
 
                 if self._input_states.get(uid) != is_on:
                     self._input_states[uid] = is_on
-                    self._schedule_dispatch(
-                        f"input_state_{uid}",
-                        f"{DOMAIN}_update_{uid}",
-                        is_on,
-                        bulk_mode,
-                    )
+                    self._dispatch(f"{DOMAIN}_update_{uid}", is_on)
 
             # --- OUTPUT HÅNDTERING ---
             elif header.startswith(PREFIX_OUTPUT):
