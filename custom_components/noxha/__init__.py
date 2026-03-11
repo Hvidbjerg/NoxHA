@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+from typing import Optional
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT
@@ -51,12 +52,37 @@ class NoxTcpClient:
         self._read_buffer = ""
         self._known_uids = set()
         self._input_states: dict[str, bool] = {}
-        self._output_states: dict[str, str] = {}
+        self._output_states: dict[str, bool] = {}
         self._area_states: dict[str, tuple[str, str]] = {}
 
     def _dispatch(self, signal: str, payload) -> None:
         """Send dispatcher-signal på Home Assistant loopet."""
         self.hass.add_job(async_dispatcher_send, self.hass, signal, payload)
+
+    @staticmethod
+    def _normalize_binary_state(raw_state: str) -> Optional[bool]:
+        """Normaliser NOX state-tekst til bool, eller None ved ukendt værdi."""
+        state = raw_state.strip().lower()
+        on_values = {"1", "on", "open", "active", "aktiv", "true"}
+        off_values = {
+            "0",
+            "off",
+            "closed",
+            "lukket",
+            "ok",
+            "hvil",
+            "idle",
+            "inactive",
+            "inaktiv",
+            "false",
+            "normal",
+        }
+
+        if state in on_values:
+            return True
+        if state in off_values:
+            return False
+        return None
 
     async def async_run(self):
         """Hovedloop for TCP-forbindelsen."""
@@ -79,8 +105,8 @@ class NoxTcpClient:
             except Exception as err:
                 _LOGGER.error("Fejl i NOX-forbindelse: %s", err)
 
-            _LOGGER.info("Venter 10 sekunder før reconnect")
-            await asyncio.sleep(10)
+            _LOGGER.info("Venter 2 sekunder før reconnect")
+            await asyncio.sleep(2)
 
     def _drain_messages(self) -> None:
         """Split stream-buffer på både CR og LF og parse komplette beskeder."""
@@ -115,18 +141,23 @@ class NoxTcpClient:
                 index = header.replace(PREFIX_INPUT, "")
                 uid = parts[1]
                 name = parts[2]
-                state = parts[3]
+                normalized_state = self._normalize_binary_state(parts[3])
+                if normalized_state is None:
+                    _LOGGER.debug(
+                        "Ukendt input state for %s: %s", uid, parts[3])
+                    return
+
+                is_on = normalized_state
 
                 if uid not in self._known_uids:
                     _LOGGER.info("Opdaget nyt input: %s (%s)", name, uid)
+                    self._input_states[uid] = is_on
                     self._dispatch(
                         f"{DOMAIN}_new_binary_sensor",
-                        {"uid": uid, "name": name, "index": index},
+                        {"uid": uid, "name": name, "index": index, "is_on": is_on},
                     )
                     self._known_uids.add(uid)
 
-                is_on = state.lower() not in [
-                    "closed", "lukket", "ok", "off", "hvil"]
                 if self._input_states.get(uid) != is_on:
                     self._input_states[uid] = is_on
                     self._dispatch(f"{DOMAIN}_update_{uid}", is_on)
@@ -138,19 +169,26 @@ class NoxTcpClient:
 
                 index = header.replace(PREFIX_OUTPUT, "")
                 name = parts[1]
-                state = parts[2].strip().lower()
+                normalized_state = self._normalize_binary_state(parts[2])
+                if normalized_state is None:
+                    _LOGGER.debug(
+                        "Ukendt output state for %s: %s", index, parts[2])
+                    return
+
+                is_on = normalized_state
                 uid = f"out_{index}"
 
                 if uid not in self._known_uids:
+                    self._output_states[index] = is_on
                     self._dispatch(
                         f"{DOMAIN}_new_output_sensor",
-                        {"index": index, "name": name},
+                        {"index": index, "name": name, "is_on": is_on},
                     )
                     self._known_uids.add(uid)
 
-                if self._output_states.get(index) != state:
-                    self._output_states[index] = state
-                    self._dispatch(f"{DOMAIN}_output_update_{index}", state)
+                if self._output_states.get(index) != is_on:
+                    self._output_states[index] = is_on
+                    self._dispatch(f"{DOMAIN}_output_update_{index}", is_on)
 
             # --- AREA HÅNDTERING ---
             elif header.startswith(PREFIX_AREA):

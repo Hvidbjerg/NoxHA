@@ -19,7 +19,13 @@ async def async_setup_entry(hass, entry, async_add_entities):
         uid = data["uid"]
         if uid not in known_devices:
             _LOGGER.info("Opdaget NOX Input: %s (%s)", data["name"], uid)
-            new_sensor = NoxInputSensor(hass, uid, data["name"], data["index"])
+            new_sensor = NoxInputSensor(
+                hass,
+                uid,
+                data["name"],
+                data["index"],
+                data.get("is_on", False),
+            )
             hass.add_job(async_add_entities, [new_sensor])
             known_devices.add(uid)
 
@@ -29,7 +35,12 @@ async def async_setup_entry(hass, entry, async_add_entities):
         uid = f"out_{index}"
         if uid not in known_devices:
             _LOGGER.info("Opdaget NOX Output: %s", data["name"])
-            new_sensor = NoxOutputSensor(hass, index, data["name"])
+            new_sensor = NoxOutputSensor(
+                hass,
+                index,
+                data["name"],
+                data.get("is_on", False),
+            )
             hass.add_job(async_add_entities, [new_sensor])
             known_devices.add(uid)
 
@@ -61,13 +72,13 @@ class NoxBaseEntity(BinarySensorEntity):
 class NoxInputSensor(NoxBaseEntity):
     """Repræsentation af et NOX Input (@I)."""
 
-    def __init__(self, hass, uid, name, index):
+    def __init__(self, hass, uid, name, index, initial_state=False):
         self.hass = hass
         self._uid = uid
         self._attr_name = name if name else f"Input {uid}"
         self._attr_unique_id = f"{DOMAIN}_inp_{uid}"
         self._index = index
-        self._attr_is_on = False
+        self._attr_is_on = initial_state
 
         name_lower = name.lower() if name else ""
         if any(x in name_lower for x in ["dør", "door", "port"]):
@@ -97,19 +108,17 @@ class NoxInputSensor(NoxBaseEntity):
 class NoxOutputSensor(NoxBaseEntity):
     """Repræsentation af et NOX Output (#O)."""
 
-    def __init__(self, hass, index, name):
+    def __init__(self, hass, index, name, initial_state=False):
         self.hass = hass
         self._index = index
         self._attr_name = name if name else f"Output {index}"
         self._attr_unique_id = f"{DOMAIN}_out_{index}"
-        self._attr_is_on = False
+        self._attr_is_on = initial_state
         self._attr_icon = "mdi:relay"
 
     async def async_added_to_hass(self):
         """Forbind til statusopdateringer."""
-        def update_state(state_text):
-            is_on = str(state_text).lower() in [
-                "on", "1", "active", "aktiv", "open"]
+        def update_state(is_on):
             if self._attr_is_on == is_on:
                 return
 
