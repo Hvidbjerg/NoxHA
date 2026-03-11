@@ -30,6 +30,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Sæt NOX integrationen op."""
     host = entry.data[CONF_HOST]
     port = entry.data[CONF_PORT]
+    _LOGGER.info("NoxHA runtime patch: threadsafe-statewrite-v2")
 
     # Opret klient-instansen
     client = NoxTcpClient(hass, host, port, entry)

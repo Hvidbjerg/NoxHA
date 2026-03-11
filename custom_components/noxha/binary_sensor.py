@@ -101,7 +101,7 @@ class NoxInputSensor(NoxBaseEntity):
                 return
 
             self._attr_is_on = is_on
-            self.schedule_update_ha_state()
+            self.hass.add_job(self.async_write_ha_state)
 
         self.async_on_remove(
             async_dispatcher_connect(
@@ -128,7 +128,7 @@ class NoxOutputSensor(NoxBaseEntity):
                 return
 
             self._attr_is_on = is_on
-            self.schedule_update_ha_state()
+            self.hass.add_job(self.async_write_ha_state)
 
         self.async_on_remove(
             async_dispatcher_connect(

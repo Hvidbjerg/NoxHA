@@ -69,7 +69,7 @@ class NoxAreaSensor(SensorEntity):
             else:
                 self._attr_icon = "mdi:shield-off"
 
-            self.schedule_update_ha_state()
+            self.hass.add_job(self.async_write_ha_state)
 
         self.async_on_remove(
             async_dispatcher_connect(
