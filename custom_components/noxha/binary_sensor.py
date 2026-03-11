@@ -22,8 +22,13 @@ async def async_setup_entry(hass, entry, async_add_entities):
         if uid not in known_devices:
             _LOGGER.info("Opdaget NOX Input: %s (%s)", data["name"], uid)
             new_sensor = NoxInputSensor(hass, uid, data["name"], data["index"])
-            # add_job sikrer at vi ikke crasher HA's loop under massiv data-modtagelse
-            hass.add_job(async_add_entities([new_sensor]))
+
+            # RETTELSE: Vi bruger call_soon_threadsafe for at tvinge den ind i hovedloopet
+            # uden at vente på en coroutine
+            hass.loop.call_soon_threadsafe(
+                lambda: hass.async_create_task(
+                    async_add_entities([new_sensor]))
+            )
             known_devices.add(uid)
 
     def async_discover_output(data):
@@ -31,13 +36,17 @@ async def async_setup_entry(hass, entry, async_add_entities):
         index = data["index"]
         uid = f"out_{index}"
         if uid not in known_devices:
-            _LOGGER.info("Opdaget NOX Output: %s (Index: %s)",
-                         data["name"], index)
+            _LOGGER.info("Opdaget NOX Output: %s", data["name"])
             new_sensor = NoxOutputSensor(hass, index, data["name"])
-            hass.add_job(async_add_entities([new_sensor]))
+
+            # SAMME RETTELSE HER
+            hass.loop.call_soon_threadsafe(
+                lambda: hass.async_create_task(
+                    async_add_entities([new_sensor]))
+            )
             known_devices.add(uid)
 
-    # Lyt efter signaler fra __init__.py
+    # Forbind til dispatcher
     async_dispatcher_connect(
         hass, f"{DOMAIN}_new_binary_sensor", async_discover_input)
     async_dispatcher_connect(
