@@ -139,6 +139,13 @@ class NoxTcpClient:
             return True
         if state in off_values:
             return False
+
+        # Nogle NOX-tekster er sammensatte, fx "sab open".
+        if "open" in state:
+            return True
+        if "closed" in state:
+            return False
+
         return None
 
     async def async_run(self):
@@ -308,7 +315,9 @@ class NoxTcpClient:
                 index = header.replace(PREFIX_AREA, "")
                 name = parts[1]
                 state = parts[2].strip()
-                alarm_type = parts[3].strip() if len(parts) > 3 else "0"
+                alarm_type_raw = parts[3].strip() if len(parts) > 3 else "0"
+                alarm_type = "0" if alarm_type_raw in {
+                    "", "$T"} else alarm_type_raw
 
                 uid = f"area_{index}"
                 if uid not in self._known_uids:
