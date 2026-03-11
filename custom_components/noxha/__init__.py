@@ -54,6 +54,10 @@ class NoxTcpClient:
         self._output_states: dict[str, str] = {}
         self._area_states: dict[str, tuple[str, str]] = {}
 
+    def _dispatch(self, signal: str, payload) -> None:
+        """Send dispatcher-signal på Home Assistant loopet."""
+        self.hass.add_job(async_dispatcher_send, self.hass, signal, payload)
+
     async def async_run(self):
         """Hovedloop for TCP-forbindelsen."""
         while True:
@@ -115,10 +119,9 @@ class NoxTcpClient:
 
                 if uid not in self._known_uids:
                     _LOGGER.info("Opdaget nyt input: %s (%s)", name, uid)
-                    async_dispatcher_send(
-                        self.hass,
+                    self._dispatch(
                         f"{DOMAIN}_new_binary_sensor",
-                        {"uid": uid, "name": name, "index": index}
+                        {"uid": uid, "name": name, "index": index},
                     )
                     self._known_uids.add(uid)
 
@@ -126,8 +129,7 @@ class NoxTcpClient:
                     "closed", "lukket", "ok", "off", "hvil"]
                 if self._input_states.get(uid) != is_on:
                     self._input_states[uid] = is_on
-                    async_dispatcher_send(
-                        self.hass, f"{DOMAIN}_update_{uid}", is_on)
+                    self._dispatch(f"{DOMAIN}_update_{uid}", is_on)
 
             # --- OUTPUT HÅNDTERING ---
             elif header.startswith(PREFIX_OUTPUT):
@@ -140,8 +142,7 @@ class NoxTcpClient:
                 uid = f"out_{index}"
 
                 if uid not in self._known_uids:
-                    async_dispatcher_send(
-                        self.hass,
+                    self._dispatch(
                         f"{DOMAIN}_new_output_sensor",
                         {"index": index, "name": name},
                     )
@@ -149,9 +150,7 @@ class NoxTcpClient:
 
                 if self._output_states.get(index) != state:
                     self._output_states[index] = state
-                    async_dispatcher_send(
-                        self.hass, f"{DOMAIN}_output_update_{index}", state
-                    )
+                    self._dispatch(f"{DOMAIN}_output_update_{index}", state)
 
             # --- AREA HÅNDTERING ---
             elif header.startswith(PREFIX_AREA):
@@ -165,8 +164,7 @@ class NoxTcpClient:
 
                 uid = f"area_{index}"
                 if uid not in self._known_uids:
-                    async_dispatcher_send(
-                        self.hass,
+                    self._dispatch(
                         f"{DOMAIN}_new_area",
                         {"index": index, "name": name},
                     )
@@ -175,8 +173,7 @@ class NoxTcpClient:
                 area_payload = (state, alarm_type)
                 if self._area_states.get(index) != area_payload:
                     self._area_states[index] = area_payload
-                    async_dispatcher_send(
-                        self.hass,
+                    self._dispatch(
                         f"{DOMAIN}_area_update_{index}",
                         {"state": state, "alarm_type": alarm_type},
                     )

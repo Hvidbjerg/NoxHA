@@ -20,7 +20,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         if uid not in known_devices:
             _LOGGER.info("Opdaget NOX Input: %s (%s)", data["name"], uid)
             new_sensor = NoxInputSensor(hass, uid, data["name"], data["index"])
-            async_add_entities([new_sensor])
+            hass.add_job(async_add_entities, [new_sensor])
             known_devices.add(uid)
 
     def async_discover_output(data):
@@ -30,7 +30,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         if uid not in known_devices:
             _LOGGER.info("Opdaget NOX Output: %s", data["name"])
             new_sensor = NoxOutputSensor(hass, index, data["name"])
-            async_add_entities([new_sensor])
+            hass.add_job(async_add_entities, [new_sensor])
             known_devices.add(uid)
 
     # Forbind til dispatcher

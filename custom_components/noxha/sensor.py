@@ -14,7 +14,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         if area_index not in known_areas:
             # Opret det nye område i HA
             new_area = NoxAreaSensor(area_index, data["name"])
-            async_add_entities([new_area])
+            hass.add_job(async_add_entities, [new_area])
             known_areas.add(area_index)
 
     # Lyt efter 'new_area' signalet fra din __init__.py
@@ -66,7 +66,7 @@ class NoxAreaSensor(SensorEntity):
             else:
                 self._attr_icon = "mdi:shield-off"
 
-            self.async_write_ha_state()
+            self.async_schedule_update_ha_state()
 
         self.async_on_remove(
             async_dispatcher_connect(
