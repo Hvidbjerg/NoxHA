@@ -23,12 +23,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
             _LOGGER.info("Opdaget NOX Input: %s (%s)", data["name"], uid)
             new_sensor = NoxInputSensor(hass, uid, data["name"], data["index"])
 
-            # RETTELSE: Vi bruger call_soon_threadsafe for at tvinge den ind i hovedloopet
-            # uden at vente på en coroutine
-            hass.loop.call_soon_threadsafe(
-                lambda: hass.async_create_task(
-                    async_add_entities([new_sensor]))
-            )
+            # RETTELSE: Vi bruger hass.add_job uden at pakke den ind i en lambda eller task.
+            # Dette er den mest robuste måde at sende en besked fra en TCP-tråd til HA-loopet.
+            hass.add_job(async_add_entities, [new_sensor])
             known_devices.add(uid)
 
     def async_discover_output(data):
@@ -40,10 +37,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
             new_sensor = NoxOutputSensor(hass, index, data["name"])
 
             # SAMME RETTELSE HER
-            hass.loop.call_soon_threadsafe(
-                lambda: hass.async_create_task(
-                    async_add_entities([new_sensor]))
-            )
+            hass.add_job(async_add_entities, [new_sensor])
             known_devices.add(uid)
 
     # Forbind til dispatcher
