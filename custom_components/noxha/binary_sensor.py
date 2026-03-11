@@ -22,9 +22,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
         if uid not in known_devices:
             _LOGGER.info("Opdaget NOX Input: %s (%s)", data["name"], uid)
             new_sensor = NoxInputSensor(hass, uid, data["name"], data["index"])
-
-            # RETTELSE: Vi bruger hass.add_job uden at pakke den ind i en lambda eller task.
-            # Dette er den mest robuste måde at sende en besked fra en TCP-tråd til HA-loopet.
             hass.add_job(async_add_entities, [new_sensor])
             known_devices.add(uid)
 
@@ -35,8 +32,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
         if uid not in known_devices:
             _LOGGER.info("Opdaget NOX Output: %s", data["name"])
             new_sensor = NoxOutputSensor(hass, index, data["name"])
-
-            # SAMME RETTELSE HER
             hass.add_job(async_add_entities, [new_sensor])
             known_devices.add(uid)
 
@@ -67,14 +62,11 @@ class NoxInputSensor(NoxBaseEntity):
     def __init__(self, hass, uid, name, index):
         self.hass = hass
         self._uid = uid
-        # Navnet der vises på flisen
         self._attr_name = name if name else f"Input {uid}"
-        # unique_id er "limen" der gør at HA kan huske dine indstillinger
         self._attr_unique_id = f"{DOMAIN}_inp_{uid}"
         self._index = index
         self._attr_is_on = False
 
-        # Sæt ikon/type automatisk baseret på tekst
         name_lower = name.lower() if name else ""
         if any(x in name_lower for x in ["dør", "door", "port"]):
             self._attr_device_class = BinarySensorDeviceClass.DOOR
@@ -89,7 +81,9 @@ class NoxInputSensor(NoxBaseEntity):
         """Forbind til statusopdateringer når sensoren lander i HA."""
         def update_state(is_on):
             self._attr_is_on = is_on
-            self.async_write_ha_state()
+            # RETTELSE: Vi bruger schedule_update i stedet for write_ha_state
+            # Det gør det sikkert at opdatere fra TCP-tråden
+            self.async_schedule_update_ha_state()
 
         self.async_on_remove(
             async_dispatcher_connect(
@@ -111,10 +105,10 @@ class NoxOutputSensor(NoxBaseEntity):
     async def async_added_to_hass(self):
         """Forbind til statusopdateringer."""
         def update_state(state_text):
-            # Tolkning af output status
             self._attr_is_on = str(state_text).lower() in [
                 "on", "1", "active", "aktiv", "open"]
-            self.async_write_ha_state()
+            # RETTELSE: Samme her for outputs
+            self.async_schedule_update_ha_state()
 
         self.async_on_remove(
             async_dispatcher_connect(
