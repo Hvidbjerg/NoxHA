@@ -37,8 +37,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = client
 
     # Start TCP-klienten som en baggrundsopgave
-    entry.async_create_background_task(
-        hass, client.async_run(), "nox_tcp_client")
+    entry.async_create_background_task(hass, client.async_run(), "nox_tcp_client")
 
     # Registrer platforme (binary_sensor, sensor, etc.)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -92,7 +91,9 @@ class NoxTcpClient:
 
         return now < self._bulk_mode_until
 
-    def _schedule_dispatch(self, key: str, signal: str, payload, bulk_mode: bool) -> None:
+    def _schedule_dispatch(
+        self, key: str, signal: str, payload, bulk_mode: bool
+    ) -> None:
         """Send straks ved single events; coalesce + throttle under bulk mode."""
         if not bulk_mode:
             self._dispatch(signal, payload)
@@ -185,7 +186,9 @@ class NoxTcpClient:
     async def _drain_messages(self) -> None:
         """Split stream-buffer på både CR og LF og parse komplette beskeder."""
         parts = self._line_breaker.split(self._read_buffer)
-        if not self._read_buffer.endswith("\n") and not self._read_buffer.endswith("\r"):
+        if not self._read_buffer.endswith("\n") and not self._read_buffer.endswith(
+            "\r"
+        ):
             self._read_buffer = parts.pop() if parts else self._read_buffer
         else:
             self._read_buffer = ""
@@ -235,7 +238,7 @@ class NoxTcpClient:
         _LOGGER.debug("Parser besked: %s", message)
 
         try:
-            parts = message.split('|')
+            parts = message.split("|")
             if len(parts) < 2:
                 return
 
@@ -251,8 +254,7 @@ class NoxTcpClient:
                 name = self._normalize_entity_name(parts[2], f"Input {uid}")
                 normalized_state = self._normalize_binary_state(parts[3])
                 if normalized_state is None:
-                    _LOGGER.debug(
-                        "Ukendt input state for %s: %s", uid, parts[3])
+                    _LOGGER.debug("Ukendt input state for %s: %s", uid, parts[3])
                     return
 
                 is_on = normalized_state
@@ -291,8 +293,7 @@ class NoxTcpClient:
                 name = self._normalize_entity_name(parts[1], f"Output {index}")
                 normalized_state = self._normalize_binary_state(parts[2])
                 if normalized_state is None:
-                    _LOGGER.debug(
-                        "Ukendt output state for %s: %s", index, parts[2])
+                    _LOGGER.debug("Ukendt output state for %s: %s", index, parts[2])
                     return
 
                 is_on = normalized_state
@@ -326,8 +327,7 @@ class NoxTcpClient:
                 name = self._normalize_entity_name(parts[1], f"Area {index}")
                 state = parts[2].strip()
                 alarm_type_raw = parts[3].strip() if len(parts) > 3 else "0"
-                alarm_type = "0" if alarm_type_raw in {
-                    "", "$T"} else alarm_type_raw
+                alarm_type = "0" if alarm_type_raw in {"", "$T"} else alarm_type_raw
 
                 uid = f"area_{index}"
                 if uid not in self._known_uids:

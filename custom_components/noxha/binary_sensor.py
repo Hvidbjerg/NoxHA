@@ -1,4 +1,5 @@
 """Binary sensor platform for NoxHA (Inputs & Outputs)."""
+
 import logging
 from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
@@ -59,11 +60,13 @@ async def async_setup_entry(hass, entry, async_add_entities):
     # Forbind til dispatcher
     entry.async_on_unload(
         async_dispatcher_connect(
-            hass, f"{DOMAIN}_new_binary_sensor", async_discover_input)
+            hass, f"{DOMAIN}_new_binary_sensor", async_discover_input
+        )
     )
     entry.async_on_unload(
         async_dispatcher_connect(
-            hass, f"{DOMAIN}_new_output_sensor", async_discover_output)
+            hass, f"{DOMAIN}_new_output_sensor", async_discover_output
+        )
     )
 
 
@@ -104,6 +107,7 @@ class NoxInputSensor(NoxBaseEntity):
 
     async def async_added_to_hass(self):
         """Forbind til statusopdateringer når sensoren lander i HA."""
+
         @callback
         def update_state(is_on):
             if self._attr_is_on == is_on:
@@ -114,7 +118,8 @@ class NoxInputSensor(NoxBaseEntity):
 
         self.async_on_remove(
             async_dispatcher_connect(
-                self.hass, f"{DOMAIN}_update_{self._uid}", update_state)
+                self.hass, f"{DOMAIN}_update_{self._uid}", update_state
+            )
         )
 
 
@@ -135,6 +140,7 @@ class NoxOutputSensor(NoxBaseEntity):
 
     async def async_added_to_hass(self):
         """Forbind til statusopdateringer."""
+
         @callback
         def update_state(is_on):
             if self._attr_is_on == is_on:
@@ -145,5 +151,6 @@ class NoxOutputSensor(NoxBaseEntity):
 
         self.async_on_remove(
             async_dispatcher_connect(
-                self.hass, f"{DOMAIN}_output_update_{self._index}", update_state)
+                self.hass, f"{DOMAIN}_output_update_{self._index}", update_state
+            )
         )

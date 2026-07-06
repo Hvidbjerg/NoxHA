@@ -31,8 +31,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     # Lyt efter 'new_area' signalet fra din __init__.py
     # Husk at tilføje dette signal i din __init__.py handle_message logik!
     entry.async_on_unload(
-        async_dispatcher_connect(
-            hass, f"{DOMAIN}_new_area", async_discover_area)
+        async_dispatcher_connect(hass, f"{DOMAIN}_new_area", async_discover_area)
     )
 
 
@@ -51,22 +50,27 @@ class NoxAreaSensor(SensorEntity):
     def extra_state_attributes(self):
         """Tilføj alarmtype og område-nummer som attributter."""
         alarm_desc = ALARM_TYPES.get(
-            self._alarm_type, f"Ukendt kode: {self._alarm_type}")
+            self._alarm_type, f"Ukendt kode: {self._alarm_type}"
+        )
         return {
             "nox_area_index": self._index,
             "alarm_type_code": self._alarm_type,
-            "alarm_status": alarm_desc
+            "alarm_status": alarm_desc,
         }
 
     async def async_added_to_hass(self):
         """Når sensoren er tilføjet, lyt efter AREA-opdateringer."""
+
         @callback
         def update_area(data):
             # data indeholder {"state": %A, "alarm_type": $T}
             new_state = data["state"]
             new_alarm_type = data["alarm_type"]
 
-            if self._attr_native_value == new_state and self._alarm_type == new_alarm_type:
+            if (
+                self._attr_native_value == new_state
+                and self._alarm_type == new_alarm_type
+            ):
                 return
 
             self._attr_native_value = new_state
@@ -82,5 +86,6 @@ class NoxAreaSensor(SensorEntity):
 
         self.async_on_remove(
             async_dispatcher_connect(
-                self.hass, f"{DOMAIN}_area_update_{self._index}", update_area)
+                self.hass, f"{DOMAIN}_area_update_{self._index}", update_area
+            )
         )

@@ -6,6 +6,7 @@ from .const import DOMAIN
 
 class NoxConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Håndterer opsætning af NOX via UI."""
+
     VERSION = 1
 
     async def async_step_user(self, user_input=None):
@@ -15,10 +16,12 @@ class NoxConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_create_entry(title="NOX Alarm", data=user_input)
 
         # Felter som brugeren skal udfylde i HA
-        data_schema = vol.Schema({
-            vol.Required(CONF_HOST): str,
-            vol.Required(CONF_PORT, default=23): int,
-        })
+        data_schema = vol.Schema(
+            {
+                vol.Required(CONF_HOST): str,
+                vol.Required(CONF_PORT, default=23): int,
+            }
+        )
 
         return self.async_show_form(
             step_id="user", data_schema=data_schema, errors=errors
