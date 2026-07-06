@@ -16,9 +16,9 @@ Integration domain: `noxha`
 
 NoxHA parser linjebaserede beskeder i dette format:
 
-- INP#I|@I|$I|%I => `INP4|3002-2|DET Stue|closed`
-- `OUT1|Gaardlys|off`
-- `AREA1|Stueetage|Tilkoblet|0`
+- INP#I|@I|$I|%I[CR][LF] => `INP4|3002-2|DET Stue|closed\r\n`
+- OUT#O|$O|%O[CR][LF] =>`OUT1|Gaardlys|off\r\n`
+- AREA#A|$A|%A|$T[CR][LF] = >`AREA1|Stueetage|Tilkoblet|0`
 
 Fortolkning:
 
